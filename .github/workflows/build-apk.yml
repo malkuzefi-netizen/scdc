@@ -1,0 +1,92 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "build-tools;36.0.0" || true
+
+          if sdkmanager "platforms;android-36.1"; then
+            echo "ANDROID_36_1_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "android-36.1 unavailable; using android-36"
+            sdkmanager "platforms;android-36"
+            python3 - <<'PY'
+from pathlib import Path
+import re
+p = Path("app/build.gradle.kts")
+s = p.read_text()
+s2 = re.sub(
+    r'compileSdk\s*\{\s*version\s*=\s*release\(36\)\s*\{\s*minorApiLevel\s*=\s*1\s*\}\s*\}',
+    'compileSdk = 36',
+    s,
+    flags=re.S,
+)
+if s2 != s:
+    p.write_text(s2)
+    print("Patched compileSdk to 36")
+else:
+    print("No compileSdk patch needed")
+PY
+          fi
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Prepare project files
+        shell: bash
+        run: |
+          if [ ! -f .env ] && [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Build debug APK
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Locate APK
+        shell: bash
+        run: |
+          find app/build/outputs/apk -type f -name "*.apk" -print
+          mkdir -p apk-out
+          cp app/build/outputs/apk/debug/*.apk apk-out/SCD-Messaging-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SCD-Messaging-debug
+          path: apk-out/SCD-Messaging-debug.apk
+          if-no-files-found: error
