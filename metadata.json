@@ -1,0 +1,6 @@
+{
+  "name": "مديرية الأمن السيبراني الجنوبي",
+  "description": "مركز الإنذار المبكر والرصد والاستطلاع الاستخباراتي للتهديدات الجوية والتشويش الإلكتروني لمحافظات الجنوب العربي",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
